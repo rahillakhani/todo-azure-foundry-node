@@ -152,7 +152,7 @@ WebSocket connections are not subject to CORS.
 
 ## Agent Logic (`mcpAgent.js`, `azureOpenAIClient.js`)
 
-`parseTodo`/`parseTodos` and `embed` call Azure OpenAI / Azure AI Foundry
+`parseTodos` and `embed` call Azure OpenAI / Azure AI Foundry
 through the standard `openai` npm package's `OpenAI` client, pointed at the
 resource's GA `v1` endpoint (`<endpoint>/openai/v1/`) with API-key auth —
 this is the current officially documented approach (no `@azure/openai` or
@@ -168,7 +168,6 @@ this is the current officially documented approach (no `@azure/openai` or
   with the current date/time so relative dates ("tomorrow") resolve
   correctly. The response is validated — a missing/unparseable/malformed
   response throws rather than silently returning something wrong.
-  `parseTodo` calls the same path and returns just the first item.
 - `embed` calls the embedding deployment (`AZURE_OPENAI_EMBEDDING_DEPLOYMENT`)
   and returns the returned vector. If `EMBEDDING_DIM` is set, it's passed as
   the API's `dimensions` truncation param (only supported by

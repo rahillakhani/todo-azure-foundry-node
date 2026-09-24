@@ -72,15 +72,6 @@ async function requestParsedTodos(text) {
 }
 
 export const mcpAgent = {
-  async parseTodo(text) {
-    if (typeof text !== "string" || !text.trim()) {
-      throw new Error("parseTodo requires non-empty text");
-    }
-
-    const [todo] = await requestParsedTodos(text.trim());
-    return todo;
-  },
-
   // Splits a longer input into multiple todos when the model determines it
   // describes more than one task (see PARSE_SYSTEM_PROMPT above); a single
   // unstructured sentence comes back as a one-item array.

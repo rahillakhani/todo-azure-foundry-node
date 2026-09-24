@@ -26,28 +26,6 @@ function chatResponse(content) {
   return { choices: [{ message: { content: JSON.stringify(content) } }] };
 }
 
-describe("mcpAgent.parseTodo", () => {
-  test("returns the single parsed todo", async () => {
-    createChatCompletion.mockResolvedValueOnce(
-      chatResponse({ todos: [{ description: "Doctor appointment", due_date: null, priority: false }] })
-    );
-
-    const todo = await mcpAgent.parseTodo("Doctor appointment");
-
-    expect(todo).toEqual({ description: "Doctor appointment", due_date: null, priority: false });
-    expect(createChatCompletion).toHaveBeenCalledTimes(1);
-    expect(createChatCompletion.mock.calls[0][0]).toMatchObject({
-      model: "test-chat-deployment",
-      response_format: { type: "json_object" },
-    });
-  });
-
-  test.each([null, undefined, "", "   ", 42])("rejects invalid text %p", async (text) => {
-    await expect(mcpAgent.parseTodo(text)).rejects.toThrow();
-    expect(createChatCompletion).not.toHaveBeenCalled();
-  });
-});
-
 describe("mcpAgent.parseTodos", () => {
   test("returns multiple todos when the model splits the input", async () => {
     createChatCompletion.mockResolvedValueOnce(
@@ -65,6 +43,15 @@ describe("mcpAgent.parseTodos", () => {
       { description: "Buy milk", due_date: null, priority: false },
       { description: "Call mom", due_date: "2026-09-23T18:00:00.000Z", priority: true },
     ]);
+    expect(createChatCompletion.mock.calls[0][0]).toMatchObject({
+      model: "test-chat-deployment",
+      response_format: { type: "json_object" },
+    });
+  });
+
+  test.each([null, undefined, "", "   ", 42])("rejects invalid text %p", async (text) => {
+    await expect(mcpAgent.parseTodos(text)).rejects.toThrow();
+    expect(createChatCompletion).not.toHaveBeenCalled();
   });
 
   test("throws when the model response has no content", async () => {
@@ -94,11 +81,6 @@ describe("mcpAgent.parseTodos", () => {
       chatResponse({ todos: [{ description: "Buy milk", due_date: "not-a-date", priority: false }] })
     );
     await expect(mcpAgent.parseTodos("Buy milk")).rejects.toThrow(/invalid due_date/);
-  });
-
-  test.each([null, undefined, "", "   ", 42])("rejects invalid text %p", async (text) => {
-    await expect(mcpAgent.parseTodos(text)).rejects.toThrow();
-    expect(createChatCompletion).not.toHaveBeenCalled();
   });
 });
 
