@@ -180,9 +180,12 @@ app.get("/todos", async (req, res) => {
 });
 
 const MAX_SEARCH_LIMIT = 50;
+// pgvector cosine distance ranges 0 (identical) to 2 (opposite) — this is
+// just a sanity bound on client input, not a claim about what's relevant.
+const MAX_SEARCH_DISTANCE = 2;
 
 app.get("/todos/search", async (req, res) => {
-  const { userId, q, limit } = req.query;
+  const { userId, q, limit, maxDistance } = req.query;
 
   if (typeof userId !== "string" || !userId.trim()) {
     return res.status(400).json({ status: "error", message: "userId is required" });
@@ -201,8 +204,18 @@ app.get("/todos/search", async (req, res) => {
     }
   }
 
+  let parsedMaxDistance;
+  if (maxDistance !== undefined) {
+    parsedMaxDistance = Number(maxDistance);
+    if (!Number.isFinite(parsedMaxDistance) || parsedMaxDistance <= 0 || parsedMaxDistance > MAX_SEARCH_DISTANCE) {
+      return res
+        .status(400)
+        .json({ status: "error", message: `maxDistance must be a positive number up to ${MAX_SEARCH_DISTANCE}` });
+    }
+  }
+
   try {
-    const todos = await todoService.searchTodos(userId, q, parsedLimit);
+    const todos = await todoService.searchTodos(userId, q, { limit: parsedLimit, maxDistance: parsedMaxDistance });
     res.json({ status: "ok", todos });
   } catch (err) {
     handleServiceError(err, res, "Failed to search todos", "Could not process the search query right now. Please try again.");

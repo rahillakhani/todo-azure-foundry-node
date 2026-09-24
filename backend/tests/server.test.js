@@ -385,7 +385,7 @@ describe("GET /todos/search", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: "ok", todos: rows });
     expect(embedMock).toHaveBeenCalledWith("groceries");
-    expect(queryMock.mock.calls[0][1]).toEqual([JSON.stringify([0, 0, 0]), "rahil", 10]);
+    expect(queryMock.mock.calls[0][1]).toEqual([JSON.stringify([0, 0, 0]), "rahil", 0.7, 10]);
   });
 
   test("accepts a custom limit", async () => {
@@ -394,7 +394,27 @@ describe("GET /todos/search", () => {
     const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries", limit: "3" });
 
     expect(res.status).toBe(200);
-    expect(queryMock.mock.calls[0][1][2]).toBe(3);
+    expect(queryMock.mock.calls[0][1][3]).toBe(3);
+  });
+
+  test("accepts a custom maxDistance", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .get("/todos/search")
+      .query({ userId: "rahil", q: "groceries", maxDistance: "0.4" });
+
+    expect(res.status).toBe(200);
+    expect(queryMock.mock.calls[0][1][2]).toBe(0.4);
+  });
+
+  test("returns an empty array (not an error) when nothing is relevant enough", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "something unrelated" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok", todos: [] });
   });
 
   test("rejects a missing userId", async () => {
@@ -417,6 +437,22 @@ describe("GET /todos/search", () => {
 
   test("rejects a limit over the max", async () => {
     const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries", limit: "51" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a non-positive maxDistance", async () => {
+    const res = await request(app)
+      .get("/todos/search")
+      .query({ userId: "rahil", q: "groceries", maxDistance: "0" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a maxDistance over the sanity bound", async () => {
+    const res = await request(app)
+      .get("/todos/search")
+      .query({ userId: "rahil", q: "groceries", maxDistance: "3" });
     expect(res.status).toBe(400);
     expect(queryMock).not.toHaveBeenCalled();
   });

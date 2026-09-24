@@ -325,11 +325,21 @@ describe("todoService.searchTodos", () => {
     const repository = fakeRepository({ searchByUser: jest.fn(async () => rows) });
     const service = createTodoService({ agent, repository });
 
-    const result = await service.searchTodos("rahil", "groceries", 5);
+    const result = await service.searchTodos("rahil", "groceries", { limit: 5, maxDistance: 0.5 });
 
     expect(result).toBe(rows);
     expect(agent.embed).toHaveBeenCalledWith("groceries");
-    expect(repository.searchByUser).toHaveBeenCalledWith("rahil", [0.9, 0.1], 5);
+    expect(repository.searchByUser).toHaveBeenCalledWith("rahil", [0.9, 0.1], { limit: 5, maxDistance: 0.5 });
+  });
+
+  test("uses default limit/maxDistance when the caller doesn't specify them", async () => {
+    const agent = fakeAgent({ embed: jest.fn(async () => [0.9, 0.1]) });
+    const repository = fakeRepository();
+    const service = createTodoService({ agent, repository });
+
+    await service.searchTodos("rahil", "groceries");
+
+    expect(repository.searchByUser).toHaveBeenCalledWith("rahil", [0.9, 0.1], { limit: 10, maxDistance: 0.7 });
   });
 
   test("wraps an embed failure in AgentError and never touches the repository", async () => {

@@ -2,6 +2,14 @@ import { AgentError, NotFoundError } from "../errors.js";
 
 const SUMMARY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const DEFAULT_SNOOZE_MINUTES = 60;
+const DEFAULT_SEARCH_LIMIT = 10;
+// Cosine distance cutoff for "actually relevant" vs. "just the closest
+// thing we had." Empirically (text-embedding-3-small, live-tested against
+// real todos): genuinely related items land well under 0.6, unrelated
+// ones land around 0.75-0.9+. 0.7 sits in the gap with margin toward not
+// hiding true matches — tune via the search route's `maxDistance` param
+// if that doesn't hold for your data.
+const DEFAULT_MAX_DISTANCE = 0.7;
 
 // Orchestrates the AI agent + repository to turn raw input into stored
 // todos. Depends only on the `agent`/`repository` shapes it's given
@@ -119,10 +127,13 @@ export function createTodoService({ agent, repository }) {
     // Semantic search: embeds the query the same way a todo's description
     // is embedded on creation, then asks the repository for the closest
     // matches by vector distance. Matches "buy milk and eggs" against a
-    // search for "groceries" even with no words in common.
-    async searchTodos(userId, query, limit) {
+    // search for "groceries" even with no words in common — but only
+    // returns rows under `maxDistance`, so an unrelated query gets back an
+    // empty array (-> "no todos found") instead of the closest N todos
+    // regardless of how unrelated they actually are.
+    async searchTodos(userId, query, { limit = DEFAULT_SEARCH_LIMIT, maxDistance = DEFAULT_MAX_DISTANCE } = {}) {
       const queryEmbedding = await embed(query);
-      return repository.searchByUser(userId, queryEmbedding, limit);
+      return repository.searchByUser(userId, queryEmbedding, { limit, maxDistance });
     },
   };
 }

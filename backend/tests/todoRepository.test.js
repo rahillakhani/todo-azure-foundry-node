@@ -197,28 +197,20 @@ describe("todoRepository.clearDueDate", () => {
 });
 
 describe("todoRepository.searchByUser", () => {
-  test("orders by cosine distance, casts the query vector, and scopes to the user", async () => {
+  test("orders by cosine distance, casts the query vector, filters by maxDistance, and scopes to the user", async () => {
     const rows = [{ id: 1, description: "Buy milk", distance: 0.1 }];
     const pool = fakePool(async () => ({ rows }));
     const repository = createTodoRepository(pool);
 
-    const result = await repository.searchByUser("rahil", [0.1, 0.2], 5);
+    const result = await repository.searchByUser("rahil", [0.1, 0.2], { limit: 5, maxDistance: 0.7 });
 
     expect(result).toBe(rows);
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/embedding <=> \$1::vector AS distance/);
+    expect(sql).toMatch(/AND embedding <=> \$1::vector < \$3/);
     expect(sql).toMatch(/ORDER BY distance ASC/);
     expect(sql).not.toMatch(/SELECT \*/);
-    expect(params).toEqual([JSON.stringify([0.1, 0.2]), "rahil", 5]);
-  });
-
-  test("defaults to a limit of 10 when not given one", async () => {
-    const pool = fakePool(async () => ({ rows: [] }));
-    const repository = createTodoRepository(pool);
-
-    await repository.searchByUser("rahil", [0.1]);
-
-    expect(pool.query.mock.calls[0][1]).toEqual([JSON.stringify([0.1]), "rahil", 10]);
+    expect(params).toEqual([JSON.stringify([0.1, 0.2]), "rahil", 0.7, 5]);
   });
 
   test("wraps a pool failure in RepositoryError", async () => {
@@ -227,7 +219,9 @@ describe("todoRepository.searchByUser", () => {
     });
     const repository = createTodoRepository(pool);
 
-    await expect(repository.searchByUser("rahil", [0.1], 5)).rejects.toThrow(RepositoryError);
+    await expect(repository.searchByUser("rahil", [0.1], { limit: 5, maxDistance: 0.7 })).rejects.toThrow(
+      RepositoryError
+    );
   });
 });
 

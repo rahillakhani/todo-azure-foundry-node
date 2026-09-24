@@ -95,19 +95,29 @@ submission, not one per item) and override whatever the model inferred.
   (`status="done"` — greyed out, struck through).
 - `500` if the database read fails.
 
-### `GET /todos/search?userId=<userId>&q=<text>&limit=<n>?`
+### `GET /todos/search?userId=<userId>&q=<text>&limit=<n>?&maxDistance=<n>?`
 
 Semantic search: embeds `q` the same way a todo's description is embedded
 on creation, then orders this user's todos by pgvector cosine distance
 (`<=>`) to that embedding — closest first. Matches on meaning, not just
 shared words (e.g. a search for "groceries" can match "Buy milk and eggs").
-`limit` is optional (default `10`, max `50`).
 
-- `400` if `userId`/`q` is missing/blank, or `limit` isn't a positive
-  integer up to 50.
-- `200` with `{ "status": "ok", "todos": Todo[] }`, closest match first.
-  Each row includes a `distance` field (lower = more similar); it's not
-  normalized to a 0-1 "percent match" — treat it as ordering only.
+Only rows with `distance < maxDistance` are returned — a query with no
+genuinely relevant todos returns an **empty array**, not "the closest N
+regardless of how unrelated." `limit` is optional (default `10`, max
+`50`). `maxDistance` is optional (default `0.7`, max `2` — pgvector cosine
+distance's theoretical ceiling). The `0.7` default is an empirically
+chosen cutoff (see `todoService.js`'s `DEFAULT_MAX_DISTANCE` comment for
+the reasoning and how to tune it), not a documented guarantee from
+OpenAI/pgvector — adjust `maxDistance` per-request if it's too strict or
+too loose for your data.
+
+- `400` if `userId`/`q` is missing/blank, `limit` isn't a positive integer
+  up to 50, or `maxDistance` isn't a positive number up to 2.
+- `200` with `{ "status": "ok", "todos": Todo[] }`, closest match first
+  (empty if nothing cleared the relevance bar). Each row includes a
+  `distance` field (lower = more similar); it's not normalized to a 0-1
+  "percent match" — treat it as ordering only.
 - `502` if Azure OpenAI is unreachable/misconfigured while embedding `q`.
 - `500` if the database query fails.
 
@@ -220,10 +230,11 @@ required to run the suite.
 
 - `todoRepository.test.js` — unit tests against a fake pool: correct SQL/
   params for insert/list/reminders/complete/undo/snooze/unsnooze/search,
-  that `searchByUser`'s query casts the query vector (`::vector`) and
-  orders by distance, that pool failures are wrapped as `RepositoryError`,
-  that an update matching no row returns `null` (not an error), and that
-  every read/RETURNING query excludes the `embedding` column.
+  that `searchByUser`'s query casts the query vector (`::vector`), filters
+  by `maxDistance`, and orders by distance, that pool failures are wrapped
+  as `RepositoryError`, that an update matching no row returns `null` (not
+  an error), and that every read/RETURNING query excludes the `embedding`
+  column.
 - `todoService.test.js` — unit tests against fake `agent`/`repository`
   objects: multi-item persistence, due_date/priority override application,
   that `parseTodos`/`embed` failures become `AgentError` (and never reach
@@ -232,7 +243,8 @@ required to run the suite.
   raising `NotFoundError` on a `null` repository result, snooze's default-
   vs-custom minutes math, the summary cache's 1-hour throttle/expiry/
   per-user isolation (via `jest.useFakeTimers()`), and `searchTodos`
-  embedding the query before delegating to the repository.
+  embedding the query and applying `DEFAULT_SEARCH_LIMIT`/
+  `DEFAULT_MAX_DISTANCE` when the caller doesn't override them.
 - `mcpAgent.test.js` — unit tests for parsing (single and multi-item),
   embedding, and summarization against a mocked Azure OpenAI client,
   including malformed-model-response and invalid-input rejection.
@@ -244,7 +256,8 @@ required to run the suite.
   (400s), agent failure (502) vs. database failure (500) vs. not-found
   (404), the optional `due_date`/`priority` fields, multi-item batches,
   the complete/undo/snooze/unsnooze routes, and search (default/custom
-  `limit`, its bounds, embed failure -> 502). Mocks `mcpAgent.parseTodos`/
+  `limit`/`maxDistance`, their bounds, an empty-array result on no
+  relevant matches, embed failure -> 502). Mocks `mcpAgent.parseTodos`/
   `embed` directly, so it doesn't re-test Azure OpenAI wiring or the
   repository/service internals — those are
   `mcpAgent.test.js`/`todoService.test.js`/`todoRepository.test.js`'s job.
@@ -284,6 +297,11 @@ required to run the suite.
 - Search's `distance` is pgvector's raw cosine distance, not normalized —
   there's no "percent match" score, and the frontend doesn't attempt to
   show one.
+- The `0.7` default relevance cutoff (`DEFAULT_MAX_DISTANCE`) was tuned
+  from one small, informal live test against `text-embedding-3-small` —
+  not a documented model guarantee. It may need adjusting for different
+  embedding models or todo content; `maxDistance` is exposed per-request
+  specifically so that doesn't require a code change.
 - `e2e.test.js` is protocol-level (mocked Postgres/mcpAgent) rather than a
   real browser test — no browser automation tooling (e.g. Playwright) is
   set up in this project yet.

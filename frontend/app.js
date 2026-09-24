@@ -181,7 +181,11 @@ async function performSearch(query) {
     lastSearchQuery = query;
     searchResults.hidden = false;
     todoLanes.hidden = true;
-    renderList(searchResultsList, data.todos, "No matching todos.", renderTodoItem);
+    // The backend already filters out anything below the relevance
+    // threshold (see backend/docs/README.md), so an empty result here
+    // means "genuinely nothing relevant," not "here's the closest N
+    // todos regardless of how unrelated they are."
+    renderList(searchResultsList, data.todos, `No todos found for "${escapeHtml(query)}".`, renderTodoItem);
   } catch (err) {
     console.error("Search failed", err);
     showToast(err.message || "Search failed.", "error");

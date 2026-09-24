@@ -72,16 +72,19 @@ export function createTodoRepository(pool) {
     // lower `distance` means more similar. The query vector is sent as the
     // same '[0.1,0.2,...]' text format used on insert, explicitly cast to
     // `vector` since operator resolution (unlike an INSERT's assignment
-    // cast) won't infer that cast on its own.
-    async searchByUser(userId, queryEmbedding, limit = 10) {
+    // cast) won't infer that cast on its own. `maxDistance` excludes rows
+    // that aren't actually relevant — without it, this always returns up
+    // to `limit` rows even when the closest "match" is nothing alike
+    // (callers must supply both; see todoService's defaults).
+    async searchByUser(userId, queryEmbedding, { limit, maxDistance }) {
       try {
         const result = await pool.query(
           `SELECT ${PUBLIC_COLUMNS}, embedding <=> $1::vector AS distance
            FROM todos
-           WHERE user_id=$2
+           WHERE user_id=$2 AND embedding <=> $1::vector < $3
            ORDER BY distance ASC
-           LIMIT $3`,
-          [JSON.stringify(queryEmbedding), userId, limit]
+           LIMIT $4`,
+          [JSON.stringify(queryEmbedding), userId, maxDistance, limit]
         );
         return result.rows;
       } catch (err) {
