@@ -1,0 +1,36 @@
+{
+  "name": "todo-azure-foundry-node",
+  "version": "1.0.0",
+  "description": "todo app with foundry and node",
+  "main": "backend/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon --watch backend/server.js",
+    "serve:frontend": "node frontend/server.js",
+    "db:migrate": "node scripts/db/migrate.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahillakhani/todo-azure-foundry-node.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rahillakhani/todo-azure-foundry-node/issues"
+  },
+  "homepage": "https://github.com/rahillakhani/todo-azure-foundry-node#readme",
+  "dependencies": {
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "openai": "^7.22.0",
+    "pg": "^8.23.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "supertest": "^7.3.0"
+  }
+}
