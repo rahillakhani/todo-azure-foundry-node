@@ -1,5 +1,11 @@
 import { RepositoryError } from "../errors.js";
 
+// Columns returned to callers. Deliberately excludes `embedding` — it's a
+// 1536-number array that's write-only outside of searchByUser's own query,
+// and would otherwise get shipped to the browser in full on every GET
+// /todos response for no reason.
+const PUBLIC_COLUMNS = "id, user_id, description, due_date, priority, status, created_at";
+
 // Sole owner of the `todos` table's SQL. Takes a pg-compatible pool (duck
 // typed: anything with a `.query(sql, params)` method) so it's testable
 // with a plain fake, and swappable without touching callers.
@@ -16,7 +22,7 @@ export function createTodoRepository(pool) {
 
     try {
       const result = await pool.query(
-        `UPDATE todos SET ${setClause} WHERE id=$${values.length + 1} AND user_id=$${values.length + 2} RETURNING *`,
+        `UPDATE todos SET ${setClause} WHERE id=$${values.length + 1} AND user_id=$${values.length + 2} RETURNING ${PUBLIC_COLUMNS}`,
         [...values, id, userId]
       );
       return result.rows[0] ?? null;
@@ -40,7 +46,7 @@ export function createTodoRepository(pool) {
     async listByUser(userId) {
       try {
         const result = await pool.query(
-          "SELECT * FROM todos WHERE user_id=$1 ORDER BY created_at DESC",
+          `SELECT ${PUBLIC_COLUMNS} FROM todos WHERE user_id=$1 ORDER BY created_at DESC`,
           [userId]
         );
         return result.rows;
@@ -52,12 +58,34 @@ export function createTodoRepository(pool) {
     async listRemindersByUser(userId) {
       try {
         const result = await pool.query(
-          "SELECT * FROM todos WHERE user_id=$1 AND due_date > NOW()",
+          `SELECT ${PUBLIC_COLUMNS} FROM todos WHERE user_id=$1 AND due_date > NOW()`,
           [userId]
         );
         return result.rows;
       } catch (err) {
         throw new RepositoryError("Failed to fetch reminders", { cause: err });
+      }
+    },
+
+    // Semantic search: orders by cosine distance (pgvector's `<=>` operator)
+    // between each todo's stored embedding and the query's embedding —
+    // lower `distance` means more similar. The query vector is sent as the
+    // same '[0.1,0.2,...]' text format used on insert, explicitly cast to
+    // `vector` since operator resolution (unlike an INSERT's assignment
+    // cast) won't infer that cast on its own.
+    async searchByUser(userId, queryEmbedding, limit = 10) {
+      try {
+        const result = await pool.query(
+          `SELECT ${PUBLIC_COLUMNS}, embedding <=> $1::vector AS distance
+           FROM todos
+           WHERE user_id=$2
+           ORDER BY distance ASC
+           LIMIT $3`,
+          [JSON.stringify(queryEmbedding), userId, limit]
+        );
+        return result.rows;
+      } catch (err) {
+        throw new RepositoryError("Failed to search todos", { cause: err });
       }
     },
 

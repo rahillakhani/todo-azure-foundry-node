@@ -195,3 +195,60 @@ describe("todoRepository.clearDueDate", () => {
     await expect(repository.clearDueDate(5, "rahil")).rejects.toThrow(RepositoryError);
   });
 });
+
+describe("todoRepository.searchByUser", () => {
+  test("orders by cosine distance, casts the query vector, and scopes to the user", async () => {
+    const rows = [{ id: 1, description: "Buy milk", distance: 0.1 }];
+    const pool = fakePool(async () => ({ rows }));
+    const repository = createTodoRepository(pool);
+
+    const result = await repository.searchByUser("rahil", [0.1, 0.2], 5);
+
+    expect(result).toBe(rows);
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/embedding <=> \$1::vector AS distance/);
+    expect(sql).toMatch(/ORDER BY distance ASC/);
+    expect(sql).not.toMatch(/SELECT \*/);
+    expect(params).toEqual([JSON.stringify([0.1, 0.2]), "rahil", 5]);
+  });
+
+  test("defaults to a limit of 10 when not given one", async () => {
+    const pool = fakePool(async () => ({ rows: [] }));
+    const repository = createTodoRepository(pool);
+
+    await repository.searchByUser("rahil", [0.1]);
+
+    expect(pool.query.mock.calls[0][1]).toEqual([JSON.stringify([0.1]), "rahil", 10]);
+  });
+
+  test("wraps a pool failure in RepositoryError", async () => {
+    const pool = fakePool(async () => {
+      throw new Error("connection refused");
+    });
+    const repository = createTodoRepository(pool);
+
+    await expect(repository.searchByUser("rahil", [0.1], 5)).rejects.toThrow(RepositoryError);
+  });
+});
+
+describe("PUBLIC_COLUMNS (embedding is never shipped back)", () => {
+  test("listByUser's query excludes the embedding column", async () => {
+    const pool = fakePool(async () => ({ rows: [] }));
+    const repository = createTodoRepository(pool);
+
+    await repository.listByUser("rahil");
+
+    expect(pool.query.mock.calls[0][0]).not.toMatch(/SELECT \*/);
+    expect(pool.query.mock.calls[0][0]).not.toContain("embedding");
+  });
+
+  test("markCompleted's RETURNING clause excludes the embedding column", async () => {
+    const pool = fakePool(async () => ({ rows: [{ id: 5 }] }));
+    const repository = createTodoRepository(pool);
+
+    await repository.markCompleted(5, "rahil");
+
+    expect(pool.query.mock.calls[0][0]).not.toMatch(/RETURNING \*/);
+    expect(pool.query.mock.calls[0][0]).not.toContain("embedding");
+  });
+});

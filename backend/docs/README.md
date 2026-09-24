@@ -95,6 +95,22 @@ submission, not one per item) and override whatever the model inferred.
   (`status="done"` — greyed out, struck through).
 - `500` if the database read fails.
 
+### `GET /todos/search?userId=<userId>&q=<text>&limit=<n>?`
+
+Semantic search: embeds `q` the same way a todo's description is embedded
+on creation, then orders this user's todos by pgvector cosine distance
+(`<=>`) to that embedding — closest first. Matches on meaning, not just
+shared words (e.g. a search for "groceries" can match "Buy milk and eggs").
+`limit` is optional (default `10`, max `50`).
+
+- `400` if `userId`/`q` is missing/blank, or `limit` isn't a positive
+  integer up to 50.
+- `200` with `{ "status": "ok", "todos": Todo[] }`, closest match first.
+  Each row includes a `distance` field (lower = more similar); it's not
+  normalized to a 0-1 "percent match" — treat it as ordering only.
+- `502` if Azure OpenAI is unreachable/misconfigured while embedding `q`.
+- `500` if the database query fails.
+
 ### `POST /todos/:id/complete`
 
 Request body: `{ "userId": string }`. Sets `status` to `"done"`, scoped to
@@ -172,7 +188,10 @@ this is the current officially documented approach (no `@azure/openai` or
   and returns the returned vector. If `EMBEDDING_DIM` is set, it's passed as
   the API's `dimensions` truncation param (only supported by
   `text-embedding-3-*` models) — use it if your model's default output size
-  doesn't match the `todos.embedding` pgvector column.
+  doesn't match the `todos.embedding` pgvector column. Every todo's
+  embedding is stored at creation time and used by `GET /todos/search` (see
+  API Reference above) — it's not just stored for later, something now
+  actually queries it.
 - **All required env vars are validated eagerly with actionable error
   messages** (e.g. "set AZURE_OPENAI_CHAT_DEPLOYMENT") rather than failing
   silently or falling back to fake data — see `mcpAgentUnconfigured.test.js`.
@@ -200,17 +219,20 @@ above them. No live database, Azure OpenAI resource, or network access is
 required to run the suite.
 
 - `todoRepository.test.js` — unit tests against a fake pool: correct SQL/
-  params for insert/list/reminders/complete/undo/snooze/unsnooze, that pool
-  failures are wrapped as `RepositoryError`, and that an update matching
-  no row returns `null` (not an error).
+  params for insert/list/reminders/complete/undo/snooze/unsnooze/search,
+  that `searchByUser`'s query casts the query vector (`::vector`) and
+  orders by distance, that pool failures are wrapped as `RepositoryError`,
+  that an update matching no row returns `null` (not an error), and that
+  every read/RETURNING query excludes the `embedding` column.
 - `todoService.test.js` — unit tests against fake `agent`/`repository`
   objects: multi-item persistence, due_date/priority override application,
   that `parseTodos`/`embed` failures become `AgentError` (and never reach
   the repository), that repository failures pass through unwrapped,
   partial-batch-failure stops after the failing item, complete/undo/snooze/unsnooze
   raising `NotFoundError` on a `null` repository result, snooze's default-
-  vs-custom minutes math, and the summary cache's 1-hour throttle/expiry/
-  per-user isolation (via `jest.useFakeTimers()`).
+  vs-custom minutes math, the summary cache's 1-hour throttle/expiry/
+  per-user isolation (via `jest.useFakeTimers()`), and `searchTodos`
+  embedding the query before delegating to the repository.
 - `mcpAgent.test.js` — unit tests for parsing (single and multi-item),
   embedding, and summarization against a mocked Azure OpenAI client,
   including malformed-model-response and invalid-input rejection.
@@ -221,8 +243,9 @@ required to run the suite.
 - `server.test.js` — REST endpoint behavior: success paths, validation
   (400s), agent failure (502) vs. database failure (500) vs. not-found
   (404), the optional `due_date`/`priority` fields, multi-item batches,
-  and the complete/undo/snooze/unsnooze routes. Mocks `mcpAgent.parseTodos`/`embed`
-  directly, so it doesn't re-test Azure OpenAI wiring or the
+  the complete/undo/snooze/unsnooze routes, and search (default/custom
+  `limit`, its bounds, embed failure -> 502). Mocks `mcpAgent.parseTodos`/
+  `embed` directly, so it doesn't re-test Azure OpenAI wiring or the
   repository/service internals — those are
   `mcpAgent.test.js`/`todoService.test.js`/`todoRepository.test.js`'s job.
 - `e2e.test.js` — protocol-level end-to-end tests: adds a todo over REST,
@@ -253,6 +276,14 @@ required to run the suite.
   and `status` isn't done" — there's no dedicated `snoozed` flag. A todo
   created with a due date up front lands in Snoozed too, identically to
   one that got there via the Snooze button; the two aren't distinguished.
+- `searchByUser` does a plain sequential scan with exact cosine distance —
+  no `ivfflat`/`hnsw` index on `embedding`. Fine at this app's scale (a
+  personal todo list per user); would need an index (and accepting
+  approximate-nearest-neighbor results) if a user's todo count ever got
+  large enough for that to matter.
+- Search's `distance` is pgvector's raw cosine distance, not normalized —
+  there's no "percent match" score, and the frontend doesn't attempt to
+  show one.
 - `e2e.test.js` is protocol-level (mocked Postgres/mcpAgent) rather than a
   real browser test — no browser automation tooling (e.g. Playwright) is
   set up in this project yet.

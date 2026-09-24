@@ -374,3 +374,67 @@ describe("POST /todos/:id/unsnooze", () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe("GET /todos/search", () => {
+  test("embeds the query and returns todos ordered by the database", async () => {
+    const rows = [{ id: 1, description: "Buy milk", distance: 0.05 }];
+    queryMock.mockResolvedValueOnce({ rows });
+
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok", todos: rows });
+    expect(embedMock).toHaveBeenCalledWith("groceries");
+    expect(queryMock.mock.calls[0][1]).toEqual([JSON.stringify([0, 0, 0]), "rahil", 10]);
+  });
+
+  test("accepts a custom limit", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries", limit: "3" });
+
+    expect(res.status).toBe(200);
+    expect(queryMock.mock.calls[0][1][2]).toBe(3);
+  });
+
+  test("rejects a missing userId", async () => {
+    const res = await request(app).get("/todos/search").query({ q: "groceries" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a missing q", async () => {
+    const res = await request(app).get("/todos/search").query({ userId: "rahil" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a non-positive limit", async () => {
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries", limit: "0" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a limit over the max", async () => {
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries", limit: "51" });
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("returns 502 when the AI agent fails to embed the query", async () => {
+    embedMock.mockRejectedValueOnce(new Error("Azure OpenAI unreachable"));
+
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries" });
+
+    expect(res.status).toBe(502);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  test("returns 500 when the database query fails", async () => {
+    queryMock.mockRejectedValueOnce(new Error("connection refused"));
+
+    const res = await request(app).get("/todos/search").query({ userId: "rahil", q: "groceries" });
+
+    expect(res.status).toBe(500);
+  });
+});

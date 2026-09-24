@@ -115,5 +115,14 @@ export function createTodoService({ agent, repository }) {
       if (!todo) throw new NotFoundError("Todo not found");
       return todo;
     },
+
+    // Semantic search: embeds the query the same way a todo's description
+    // is embedded on creation, then asks the repository for the closest
+    // matches by vector distance. Matches "buy milk and eggs" against a
+    // search for "groceries" even with no words in common.
+    async searchTodos(userId, query, limit) {
+      const queryEmbedding = await embed(query);
+      return repository.searchByUser(userId, queryEmbedding, limit);
+    },
   };
 }

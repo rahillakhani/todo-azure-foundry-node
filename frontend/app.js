@@ -31,6 +31,12 @@ const refreshTodosBtn = document.getElementById("refresh-todos");
 const refreshSummaryBtn = document.getElementById("refresh-summary");
 const refreshRemindersBtn = document.getElementById("refresh-reminders");
 const toast = document.getElementById("toast");
+const searchForm = document.getElementById("search-form");
+const searchInput = document.getElementById("search-input");
+const searchResults = document.getElementById("search-results");
+const searchResultsList = document.getElementById("search-results-list");
+const clearSearchBtn = document.getElementById("clear-search");
+const todoLanes = document.getElementById("todo-lanes");
 
 function escapeHtml(value) {
   const div = document.createElement("div");
@@ -158,9 +164,40 @@ async function loadTodos() {
   }
 }
 
-// Handles clicks on the Complete/Undo/Snooze buttons inside any lane
-// (event delegation, since list items are re-rendered wholesale on every
-// update rather than diffed).
+// Semantic search: the backend embeds `query` and orders todos by vector
+// similarity (see backend/docs/README.md's Agent Logic section) — this
+// finds e.g. "groceries" matches against "Buy milk and eggs" even though
+// no words overlap. Results reuse renderTodoItem, so Complete/Snooze/etc.
+// work directly from the search results too.
+let lastSearchQuery = null;
+
+async function performSearch(query) {
+  try {
+    const url = `${API_BASE_URL}/todos/search?userId=${encodeURIComponent(userId)}&q=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Search failed");
+
+    lastSearchQuery = query;
+    searchResults.hidden = false;
+    todoLanes.hidden = true;
+    renderList(searchResultsList, data.todos, "No matching todos.", renderTodoItem);
+  } catch (err) {
+    console.error("Search failed", err);
+    showToast(err.message || "Search failed.", "error");
+  }
+}
+
+function clearSearch() {
+  lastSearchQuery = null;
+  searchInput.value = "";
+  searchResults.hidden = true;
+  todoLanes.hidden = false;
+}
+
+// Handles clicks on the Complete/Undo/Snooze buttons inside any lane, or
+// the search results list (event delegation, since list items are
+// re-rendered wholesale on every update rather than diffed).
 async function handleTodoAction(event) {
   const button = event.target.closest(".todo-action");
   if (!button) return;
@@ -187,6 +224,9 @@ async function handleTodoAction(event) {
 
     await loadTodos();
     requestReminders();
+    if (!searchResults.hidden && lastSearchQuery) {
+      await performSearch(lastSearchQuery);
+    }
   } catch (err) {
     console.error(`Failed to ${action} todo`, err);
     showToast(err.message || `Couldn't ${action} that todo.`, "error");
@@ -308,6 +348,13 @@ refreshRemindersBtn.addEventListener("click", requestReminders);
 activeTodosList.addEventListener("click", handleTodoAction);
 snoozedTodosList.addEventListener("click", handleTodoAction);
 completedTodosList.addEventListener("click", handleTodoAction);
+searchResultsList.addEventListener("click", handleTodoAction);
+searchForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = searchInput.value.trim();
+  if (query) performSearch(query);
+});
+clearSearchBtn.addEventListener("click", clearSearch);
 
 loadTodos();
 connectWebSocket();

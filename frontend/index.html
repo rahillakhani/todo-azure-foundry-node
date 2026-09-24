@@ -52,25 +52,47 @@
           </button>
         </div>
 
-        <div class="lane">
-          <h3 class="lane__heading">Active</h3>
-          <ul id="todos-active-list" class="todo-list">
-            <li class="todo-list__empty">Loading…</li>
-          </ul>
+        <form id="search-form" class="search-form">
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search todos by meaning…"
+            aria-label="Search todos"
+          />
+          <button type="submit" class="link-button" title="Search" aria-label="Search">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          </button>
+        </form>
+
+        <div id="search-results" class="lane" hidden>
+          <div class="lane__heading-row">
+            <h3 class="lane__heading">Search results</h3>
+            <button id="clear-search" type="button" class="text-button">Clear</button>
+          </div>
+          <ul id="search-results-list" class="todo-list"></ul>
         </div>
 
-        <div class="lane">
-          <h3 class="lane__heading lane__heading--snoozed">Snoozed</h3>
-          <ul id="todos-snoozed-list" class="todo-list">
-            <li class="todo-list__empty">Loading…</li>
-          </ul>
-        </div>
+        <div id="todo-lanes">
+          <div class="lane">
+            <h3 class="lane__heading">Active</h3>
+            <ul id="todos-active-list" class="todo-list">
+              <li class="todo-list__empty">Loading…</li>
+            </ul>
+          </div>
 
-        <div class="lane">
-          <h3 class="lane__heading">Completed</h3>
-          <ul id="todos-completed-list" class="todo-list">
-            <li class="todo-list__empty">Loading…</li>
-          </ul>
+          <div class="lane">
+            <h3 class="lane__heading lane__heading--snoozed">Snoozed</h3>
+            <ul id="todos-snoozed-list" class="todo-list">
+              <li class="todo-list__empty">Loading…</li>
+            </ul>
+          </div>
+
+          <div class="lane">
+            <h3 class="lane__heading">Completed</h3>
+            <ul id="todos-completed-list" class="todo-list">
+              <li class="todo-list__empty">Loading…</li>
+            </ul>
+          </div>
         </div>
       </section>
 

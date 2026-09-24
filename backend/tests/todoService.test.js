@@ -20,6 +20,7 @@ function fakeRepository(overrides = {}) {
     markPending: jest.fn(async (id) => ({ id, status: "pending", due_date: null })),
     snoozeDueDate: jest.fn(async (id, userId, dueDate) => ({ id, due_date: dueDate })),
     clearDueDate: jest.fn(async (id) => ({ id, due_date: null })),
+    searchByUser: jest.fn(async () => []),
     ...overrides,
   };
 }
@@ -314,5 +315,45 @@ describe("todoService.unsnoozeTodo", () => {
     const service = createTodoService({ agent: fakeAgent(), repository });
 
     await expect(service.unsnoozeTodo(999, "rahil")).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("todoService.searchTodos", () => {
+  test("embeds the query, then delegates to repository.searchByUser", async () => {
+    const rows = [{ id: 1, description: "Buy milk", distance: 0.05 }];
+    const agent = fakeAgent({ embed: jest.fn(async () => [0.9, 0.1]) });
+    const repository = fakeRepository({ searchByUser: jest.fn(async () => rows) });
+    const service = createTodoService({ agent, repository });
+
+    const result = await service.searchTodos("rahil", "groceries", 5);
+
+    expect(result).toBe(rows);
+    expect(agent.embed).toHaveBeenCalledWith("groceries");
+    expect(repository.searchByUser).toHaveBeenCalledWith("rahil", [0.9, 0.1], 5);
+  });
+
+  test("wraps an embed failure in AgentError and never touches the repository", async () => {
+    const agent = fakeAgent({
+      embed: jest.fn(async () => {
+        throw new Error("azure unreachable");
+      }),
+    });
+    const repository = fakeRepository();
+    const service = createTodoService({ agent, repository });
+
+    await expect(service.searchTodos("rahil", "groceries")).rejects.toThrow(AgentError);
+    expect(repository.searchByUser).not.toHaveBeenCalled();
+  });
+
+  test("propagates a repository failure as-is", async () => {
+    class FakeRepoError extends Error {}
+    const repository = fakeRepository({
+      searchByUser: jest.fn(async () => {
+        throw new FakeRepoError("db down");
+      }),
+    });
+    const service = createTodoService({ agent: fakeAgent(), repository });
+
+    await expect(service.searchTodos("rahil", "groceries")).rejects.toThrow(FakeRepoError);
   });
 });

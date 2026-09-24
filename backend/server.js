@@ -29,12 +29,15 @@ app.use((req, res, next) => {
 // Shared by every route that calls into todoService: maps the typed
 // service-layer errors to the appropriate status code, and falls back to a
 // generic 500 for anything unexpected.
-function handleServiceError(err, res, fallbackMessage) {
+function handleServiceError(
+  err,
+  res,
+  fallbackMessage,
+  agentMessage = "Could not understand the todo input right now. Please try again."
+) {
   if (err instanceof AgentError) {
     console.error("Agent failure", err);
-    return res
-      .status(502)
-      .json({ status: "error", message: "Could not understand the todo input right now. Please try again." });
+    return res.status(502).json({ status: "error", message: agentMessage });
   }
   if (err instanceof NotFoundError) {
     return res.status(404).json({ status: "error", message: "Todo not found" });
@@ -173,6 +176,36 @@ app.get("/todos", async (req, res) => {
   } catch (err) {
     console.error("Failed to fetch todos", err);
     res.status(500).json({ status: "error", message: "Failed to fetch todos" });
+  }
+});
+
+const MAX_SEARCH_LIMIT = 50;
+
+app.get("/todos/search", async (req, res) => {
+  const { userId, q, limit } = req.query;
+
+  if (typeof userId !== "string" || !userId.trim()) {
+    return res.status(400).json({ status: "error", message: "userId is required" });
+  }
+  if (typeof q !== "string" || !q.trim()) {
+    return res.status(400).json({ status: "error", message: "q is required" });
+  }
+
+  let parsedLimit;
+  if (limit !== undefined) {
+    parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit <= 0 || parsedLimit > MAX_SEARCH_LIMIT) {
+      return res
+        .status(400)
+        .json({ status: "error", message: `limit must be a positive integer up to ${MAX_SEARCH_LIMIT}` });
+    }
+  }
+
+  try {
+    const todos = await todoService.searchTodos(userId, q, parsedLimit);
+    res.json({ status: "ok", todos });
+  } catch (err) {
+    handleServiceError(err, res, "Failed to search todos", "Could not process the search query right now. Please try again.");
   }
 });
 
