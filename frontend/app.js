@@ -1,5 +1,5 @@
 const config = window.APP_CONFIG || {};
-const API_BASE_URL = config.apiBaseUrl || "http://localhost:3000";
+const API_BASE_URL = config.apiBaseUrl || window.location.origin || "http://localhost:3000";
 const WS_URL = config.wsUrl || "ws://localhost:8080";
 const USER_ID_KEY = "todo-app:userId";
 const MAX_RECONNECT_DELAY_MS = 30_000;
