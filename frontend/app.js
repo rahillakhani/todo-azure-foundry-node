@@ -1,8 +1,9 @@
 const config = window.APP_CONFIG || {};
-const API_BASE_URL = config.apiBaseUrl || "http://localhost:3000";
-const WS_URL = config.wsUrl || "ws://localhost:8080";
+// Same-origin by default: in production the API is served from this static
+// web app at /api/*; for local dev, point apiBaseUrl at the backend (see
+// backend/.env / README).
+const API_BASE_URL = config.apiBaseUrl ?? "/api";
 const USER_ID_KEY = "todo-app:userId";
-const MAX_RECONNECT_DELAY_MS = 30_000;
 const SUMMARY_REFRESH_INTERVAL_MS = 60 * 60 * 1000; // matches the backend's hourly summary cache
 
 function getUserId() {
@@ -280,68 +281,36 @@ async function submitTodo(event) {
   }
 }
 
-// --- WebSocket, with reconnect-on-close using capped exponential backoff ---
-let socket = null;
-let reconnectAttempts = 0;
-
 function setConnectionStatus(state, label) {
   connectionStatus.textContent = label;
   connectionStatus.className = `status status--${state}`;
 }
 
-function connectWebSocket() {
-  setConnectionStatus("connecting", "Connecting to server…");
-  socket = new WebSocket(WS_URL);
+async function requestSummary() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/todos/summary?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to load summary");
 
-  socket.addEventListener("open", () => {
-    reconnectAttempts = 0;
+    summaryText.textContent = data.summary;
     setConnectionStatus("open", "Connected");
-    requestSummary();
-    requestReminders();
-  });
-
-  socket.addEventListener("message", (event) => {
-    let message;
-    try {
-      message = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    if (message.type === "summary") {
-      summaryText.textContent = message.data;
-    } else if (message.type === "reminders") {
-      renderList(remindersList, message.data, "No upcoming reminders.", renderReminderItem);
-    } else if (message.type === "error") {
-      console.warn("WebSocket error message", message.message);
-    }
-  });
-
-  socket.addEventListener("close", () => {
-    setConnectionStatus("closed", "Disconnected — reconnecting…");
-    scheduleReconnect();
-  });
-
-  socket.addEventListener("error", () => {
-    socket.close();
-  });
-}
-
-function scheduleReconnect() {
-  reconnectAttempts += 1;
-  const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
-  setTimeout(connectWebSocket, delay);
-}
-
-function requestSummary() {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "getSummary", userId }));
+  } catch (err) {
+    console.error("Failed to load summary", err);
+    setConnectionStatus("closed", "Disconnected");
   }
 }
 
-function requestReminders() {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "getReminders", userId }));
+async function requestReminders() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/todos/reminders?userId=${encodeURIComponent(userId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to load reminders");
+
+    renderList(remindersList, data.reminders, "No upcoming reminders.", renderReminderItem);
+    setConnectionStatus("open", "Connected");
+  } catch (err) {
+    console.error("Failed to load reminders", err);
+    setConnectionStatus("closed", "Disconnected");
   }
 }
 
@@ -361,7 +330,8 @@ searchForm.addEventListener("submit", (event) => {
 clearSearchBtn.addEventListener("click", clearSearch);
 
 loadTodos();
-connectWebSocket();
+requestSummary();
+requestReminders();
 // The backend only recomputes the summary once an hour anyway; this just
 // keeps the panel from going stale in a long-lived tab without the user
 // having to click Refresh.

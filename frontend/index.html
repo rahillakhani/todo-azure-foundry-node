@@ -127,11 +127,11 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script>
-    // Adjust these if the backend runs on non-default ports (see backend/.env).
-    window.APP_CONFIG = {
-      apiBaseUrl: window.location.origin + ":3000" || "http://localhost:3000",
-      wsUrl: window.location.origin + ":8080" || "ws://localhost:8080",
-    };
+    // In production (Azure Static Web Apps) the API is served same-origin
+    // at /api/*, so no config is needed — app.js defaults apiBaseUrl to
+    // "/api". For local dev against `node backend/server.js` directly
+    // (not through the Functions host), uncomment this:
+    // window.APP_CONFIG = { apiBaseUrl: "http://localhost:3000" };
   </script>
   <script src="app.js"></script>
 </body>

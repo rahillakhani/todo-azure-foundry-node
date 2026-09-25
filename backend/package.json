@@ -1,0 +1,18 @@
+{
+  "name": "todo-backend-functions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.16.5",
+    "@azure/functions-extensions-express": "^0.1.1-preview",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "openai": "^7.22.0",
+    "pg": "^8.23.0"
+  }
+}

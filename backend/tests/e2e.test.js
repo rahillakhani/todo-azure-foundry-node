@@ -1,10 +1,8 @@
 import { jest } from "@jest/globals";
-import { WebSocketServer, WebSocket } from "ws";
 
-// Protocol-level E2E test: real HTTP + real WebSocket wire, mocked Postgres
-// (no live database required in CI). Exercises the full add-todo ->
-// list-todos -> get-reminders -> get-summary flow a browser client would
-// drive against this server.
+// Protocol-level E2E test: real HTTP wire, mocked Postgres (no live database
+// required in CI). Exercises the full add-todo -> list-todos -> reminders ->
+// summary flow a browser client would drive against this server.
 
 const queryMock = jest.fn();
 
@@ -25,39 +23,12 @@ jest.unstable_mockModule("../mcpAgent.js", () => ({
   },
 }));
 
-const { app, attachWebSocketHandlers } = await import("../server.js");
+const { app } = await import("../server.js");
 const { default: request } = await import("supertest");
-
-let wss;
-let wsUrl;
-
-beforeAll(async () => {
-  wss = new WebSocketServer({ port: 0 });
-  attachWebSocketHandlers(wss);
-  wsUrl = `ws://localhost:${wss.address().port}`;
-});
-
-afterAll(async () => {
-  await new Promise((resolve) => wss.close(resolve));
-});
 
 beforeEach(() => {
   queryMock.mockReset();
 });
-
-function connect() {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    ws.once("open", () => resolve(ws));
-    ws.once("error", reject);
-  });
-}
-
-function nextMessage(ws) {
-  return new Promise((resolve) => {
-    ws.once("message", (data) => resolve(JSON.parse(data.toString())));
-  });
-}
 
 test("user adds a todo, sees it listed, and receives it as a reminder", async () => {
   const userId = "e2e-user";
@@ -86,21 +57,15 @@ test("user adds a todo, sees it listed, and receives it as a reminder", async ()
   expect(listRes.status).toBe(200);
   expect(listRes.body.todos).toEqual([storedRow]);
 
-  const ws = await connect();
+  queryMock.mockResolvedValueOnce({ rows: [storedRow] }); // GET /todos/reminders
+  const remindersRes = await request(app).get("/todos/reminders").query({ userId });
+  expect(remindersRes.status).toBe(200);
+  expect(remindersRes.body.reminders).toEqual([storedRow]);
 
-  queryMock.mockResolvedValueOnce({ rows: [storedRow] }); // getReminders
-  const remindersPromise = nextMessage(ws);
-  ws.send(JSON.stringify({ type: "getReminders", userId }));
-  const remindersMsg = await remindersPromise;
-  expect(remindersMsg).toEqual({ type: "reminders", data: [storedRow] });
-
-  queryMock.mockResolvedValueOnce({ rows: [storedRow] }); // getSummary
-  const summaryPromise = nextMessage(ws);
-  ws.send(JSON.stringify({ type: "getSummary", userId }));
-  const summaryMsg = await summaryPromise;
-  expect(summaryMsg).toEqual({ type: "summary", data: "You have 1 pending task(s)." });
-
-  ws.close();
+  queryMock.mockResolvedValueOnce({ rows: [storedRow] }); // GET /todos/summary
+  const summaryRes = await request(app).get("/todos/summary").query({ userId });
+  expect(summaryRes.status).toBe(200);
+  expect(summaryRes.body.summary).toBe("You have 1 pending task(s).");
 });
 
 test("user completes a todo, undoes it, then snoozes it", async () => {
@@ -132,15 +97,12 @@ test("user completes a todo, undoes it, then snoozes it", async () => {
   expect(notFoundRes.status).toBe(404);
 });
 
-test("WebSocket client reports an error for an unknown message type", async () => {
-  const ws = await connect();
+test("summary and reminders reject a request missing userId", async () => {
+  const summaryRes = await request(app).get("/todos/summary");
+  expect(summaryRes.status).toBe(400);
 
-  const errorPromise = nextMessage(ws);
-  ws.send(JSON.stringify({ type: "bogus", userId: "e2e-user" }));
-  const errorMsg = await errorPromise;
+  const remindersRes = await request(app).get("/todos/reminders");
+  expect(remindersRes.status).toBe(400);
 
-  expect(errorMsg.type).toBe("error");
   expect(queryMock).not.toHaveBeenCalled();
-
-  ws.close();
 });

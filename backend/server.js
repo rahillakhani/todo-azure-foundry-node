@@ -1,5 +1,4 @@
 import express from "express";
-import { WebSocketServer } from "ws";
 import pool from "./db.js";
 import { mcpAgent } from "./mcpAgent.js";
 import { createTodoRepository } from "./repositories/todoRepository.js";
@@ -222,51 +221,38 @@ app.get("/todos/search", async (req, res) => {
   }
 });
 
-export function attachWebSocketHandlers(wss) {
-  wss.on("connection", (ws) => {
-    ws.on("message", async (raw) => {
-      let payload;
-      try {
-        payload = JSON.parse(raw.toString());
-      } catch {
-        ws.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
-        return;
-      }
+app.get("/todos/summary", async (req, res) => {
+  const { userId } = req.query;
 
-      const { type, userId } = payload ?? {};
-      if (typeof userId !== "string" || !userId.trim()) {
-        ws.send(JSON.stringify({ type: "error", message: "userId is required" }));
-        return;
-      }
+  if (typeof userId !== "string" || !userId.trim()) {
+    return res.status(400).json({ status: "error", message: "userId is required" });
+  }
 
-      try {
-        if (type === "getSummary") {
-          const summary = await todoService.getSummary(userId);
-          ws.send(JSON.stringify({ type: "summary", data: summary }));
-        } else if (type === "getReminders") {
-          const reminders = await todoService.getReminders(userId);
-          ws.send(JSON.stringify({ type: "reminders", data: reminders }));
-        } else {
-          ws.send(JSON.stringify({ type: "error", message: `Unknown type: ${type}` }));
-        }
-      } catch (err) {
-        console.error("WebSocket handler error", err);
-        ws.send(JSON.stringify({ type: "error", message: "Internal error" }));
-      }
-    });
-  });
+  try {
+    const summary = await todoService.getSummary(userId);
+    res.json({ status: "ok", summary });
+  } catch (err) {
+    handleServiceError(err, res, "Failed to fetch summary");
+  }
+});
 
-  return wss;
-}
+app.get("/todos/reminders", async (req, res) => {
+  const { userId } = req.query;
+
+  if (typeof userId !== "string" || !userId.trim()) {
+    return res.status(400).json({ status: "error", message: "userId is required" });
+  }
+
+  try {
+    const reminders = await todoService.getReminders(userId);
+    res.json({ status: "ok", reminders });
+  } catch (err) {
+    handleServiceError(err, res, "Failed to fetch reminders");
+  }
+});
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const port = process.env.PORT || 3000;
-  const wsPort = process.env.WS_PORT || 8080;
-
   app.listen(port, () => console.log(`HTTP server listening on ${port}`));
-
-  const wss = new WebSocketServer({ port: wsPort });
-  attachWebSocketHandlers(wss);
-  console.log(`WebSocket server listening on ${wsPort}`);
 }
