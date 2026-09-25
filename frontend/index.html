@@ -129,8 +129,8 @@
   <script>
     // Adjust these if the backend runs on non-default ports (see backend/.env).
     window.APP_CONFIG = {
-      apiBaseUrl: "http://localhost:3000",
-      wsUrl: "ws://localhost:8080",
+      apiBaseUrl: window.location.origin + ":3000" || "http://localhost:3000",
+      wsUrl: window.location.origin + ":8080" || "ws://localhost:8080",
     };
   </script>
   <script src="app.js"></script>
